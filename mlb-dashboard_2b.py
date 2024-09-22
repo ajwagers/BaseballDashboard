@@ -12,6 +12,8 @@ import datetime
 import re
 from collections import Counter
 
+#pybaseball scrapes data from:  https://www.baseball-reference.com/, https://baseballsavant.mlb.com/, and https://www.fangraphs.com/.
+
 # Dictionary of team abbreviations and team names
 mlb_teams = {
     "ARI": "Arizona Diamondbacks",
@@ -46,8 +48,103 @@ mlb_teams = {
     "WSN": "Washington Nationals"
 }
 
-#def load_bootstrap():
-#    return st.markdown('<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">', unsafe_allow_html=True)
+bat_stat_dict = {
+    "TG": "Total Games",
+    "G": "Games Played",
+    "AB": "At Bats",
+    "PA": "Plate Appearances",
+    "H": "Hits",
+    "1B": "Singles",
+    "2B": "Doubles",
+    "3B": "Triples",
+    "HR": "Home Run",
+    "R": "Runs",
+    "RBI": "Runs Batted In",
+    "BB": "Walks",
+    "IBB": "Intential Walks",
+    "SO": "Strikeouts",
+    "HBP": "Hit By Pitch",
+    "SF": "Sacrifice Fly",
+    "SH": "Sacrifice Hit",
+    "GDP": "Ground to Double Play",
+    "SB": "Stolen Bases",
+    "CS": "Caught Stealing",
+    "BB%": "Walk Percentage",
+    "K%": "Strikeout Percentage",
+    "BB/K": "Walk to Strikeout Ratio",
+    "ISO": "Isolated Power (SLG-AVG)",
+    "BAIP": "Batting Average on Balls in Play",
+    "AVG": "Batting Average",
+    "OBP": "On Base Percentage",
+    "SLG": "Slugging Percentage",
+    "OPS": "On Base + Slugging Percentage",
+    "Spd": "Speed Score",
+    "UBR": "Ultimate Base Running",
+    "wGDP": "Ground to Double Play Abave Average",
+    "XBR": "Statcast baserunning average",
+    "wSB": "Stolen Base and Caught Stealing above average",
+    "wOBA": "Weighted On Base Average",
+    "wRC": "Runs Created in terms of wOBA",
+    "wRAA": "Runs Above Average from  wOBA",
+    "wRC+": "Runs per Plate Appearance where 100 is average",
+    "GB/FB": "Ground Ball to Fly Ball Ratio",
+    "LD%": "Line Drive Percentage",
+    "GB%": "Ground Ball Percentage",
+    "FB%": "Fly Ball Percentage",
+    "IFFB%": "Infield Fly Ball Percentage",
+    "HR/FB": "Home Run to Fly Ball Ratio",
+    "IFH": "Infield Hits",
+    "IFH%": "Infield Hit Percentage",
+    "BUH": "Bunt Hits",
+    "BUH%": "Bunt Hit Percentage",
+    "Pull%": "Percentage of Balls Pulled into Play",
+    "Cent%": "Percentage of Balls Hit to Centerfield",
+    "Oppo%": "Percentage of Balls Hit to the Opposite Field",
+    "Soft%": "Percentage of Balls Hit with a soft speed",
+    "Med%": "Percentage of Balls Hit with a Medium Speed",
+    "Hard%": "Percentage of Balls Hit with a Hard Speed",
+    "WPA": "Win Probability Added",
+    "-WPA": "Loss Advancement",
+    "+WPA": "Win Advancement",
+    "RE24": "Runs above average based on 24 run/out states",
+    "REW": "Wins above average based on 24 run/out states",
+    "pLI": "Average Leverage Index",
+    "phLI": "Average Leverage Index while pinch hitting",
+    "PH": "Pinch Hitting Opportunities",
+    "WPA/LI": "Situational Wins",
+    "Clutch": "Performance Under Pressure",
+    "Batting": "Park adjusted runs above average based on wOBA",
+    "Base Running": "Base Running Runs Above Average, includes SB and CS.",
+    "Fielding": "Fielding Runs Above Average based on UZR",
+    "Positional": "Positional Adjustments",
+    "League": "League adjustment to zero out wins above average",
+    "Replacement": "Replacement Runs",
+    "BsR": "Base Running Runs Above Average",
+    "Off": "Offense - Batting and Base Running Above Average",
+    "Def": "Defebse - Fielding and Positional Adjustment",
+    "RAR": "Runs Above Replacement",
+    "WAR": "Wins Above Replacement",
+    "Dollars": "WAR convert to dollars based on free agency",
+    "Events": "Number of batted balls (PA - SO - BB - HBP)",
+    "EV": "Exit Velocity (mph), speed as the ball comes off the bat",
+    "maxEV": "maximum Exit Velocity",
+    "LA": "Launch Angle",
+    "Barrels": "Hit type that could lead to .500 batting average",
+    "Barrels": "Percentage of hits that are Barrels",
+    "HardHit": "Number of hits with an exit velocity of 95mph",
+    "HardHit%": "Percentage of hits that are hard hits",
+    "PPTV": "Pitcher Pitch Timer Violation",
+    "CPTV": "Catcher Pitch Timer Violation",
+    "DGV": "Disengagement Violation",
+    "DSV": "Defensive Shift Violation",
+    "BPTV": "Batter Pitch Timer Violation",
+    "BTV": "Batter Timeout Violation",
+    "EBV": "Total Balls by Violation",
+    "ESV": "Total Strikes by Violation",
+    "wTeamV": "Total Run Value of Violations Commited by the Player/Team",
+    "wOppTeamV": "Total Run Value of Violations Commited by the Opposing Player/Team",
+    "wNetPitV / wNetBatV": "Total Net Run Value for Player/Team"
+}
 
 def get_team_abbreviation(team_name):
     for abbr, name in mlb_teams.items():
@@ -60,6 +157,8 @@ def get_team_data(year):
     try:
         batting = team_batting(year).set_index('Team')
         pitching = team_pitching(year).set_index('Team')
+        #print(pitching.columns)
+        pitching = pitching.rename(columns={"R":"RA"})
         # Combine batting and pitching data, keeping only unique columns
         combined = pd.concat([batting, pitching], axis=1)
         return combined.loc[:, ~combined.columns.duplicated()]
@@ -138,7 +237,7 @@ def get_standings_statsapi(year):
     all_teams = []
     current_division = ""
 
-    for line in standings_string.split('\n'):
+    for line in standings_data.split('\n'):
         division_match = division_pattern.search(line)
         if division_match:
             current_division = division_match.group(0)
@@ -291,48 +390,6 @@ def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-#def set_streamlit_colors(colors):
-    #primary_color = colors[0]
-    #secondary_color = colors[1]
-    #background_color = colors[2]
-    #print(colors)
-    
-    #st.markdown(f"""
-    #<style>
-    #.stApp {{
-    #    background-color: {background_color};
-    #}}
-    #.stButton>button {{
-    #    color: {secondary_color};
-    #    background-color: {primary_color};
-    #}}
-    #.stTextInput>div>div>input {{
-    #    color: {primary_color};
-    #}}
-    #/* Metric card styling */
-    #div.css-1r6slb0.e1tzin5v2 {{
-    #    background-color: {primary_color};
-    #    border: 1px solid {primary_color};
-    #    border-left: 0.5rem solid rgba(99, 99, 99, 0.2) !important;
-    #    box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15) !important;
-    #    color: {background_color};
-    #}}
-    #div.css-1r6slb0.e1tzin5v2 {{
-    #    border-left: 0.5rem solid rgba(99, 99, 99, 0.2) !important;
-    #}}
-    #label.css-mkogse.e16fv1kl2 {{
-    #    color: {background_color} !important;
-    #}}
-    #div.css-1xarl3l.e16fv1kl1 {{
-    #    color: {background_color};
-    #}}
-    #
-    #div.css-1ht1j8u.e16fv1kl0 {{
-    #    color: {secondary_color};
-    #}}
-    #</style>
-    #""", unsafe_allow_html=True)
-
 # Streamlit app
 def main():
     # Set page config at the very beginning
@@ -387,26 +444,37 @@ def main():
     standings_data = get_standings(year)
     last_week_data = get_last_week(year,selected_team)
 
+    col_names = team_data.columns 
+    for names in col_names:
+        if names == 'RA':
+            print(names)
+    #print(team_data.head())
+
     # Team-level KPIs
     #st.header(f"{selected_team} KPIs for {year}")
 
     # Find the row for the selected team
     team_row = standings_data[standings_data['Tm'] == selected_team]
+    team_abv = next(k for k, v in mlb_teams.items() if v == selected_team)
+    print(team_abv)
+    print(team_data.index)
+    team_data_row = team_data[team_data.index == team_abv]
 
     # Create three columns for metrics
-    col1, col2, col3, col4 = st.columns((1,2,2,2))
+    col1, col2, col3, col4, col5, col6 = st.columns((1,2,2,2,2,2))
 
     with col1:
         st.header(f"{year}")
 
     with col2:
-         st.metric("Wins", int(team_row['W'].values[0]), delta = int(last_week_data[0]), help="The delta is for the last 7 days.")
-#        st.metric("Run Differential", run_diff)
+        st.metric("Wins", int(team_row['W'].values[0]), delta = int(last_week_data[0]), help="The delta is for the last 7 days.")
+        run_diff = team_data_row['R'] - team_data_row['RA']
+        st.metric("Run Differential", run_diff)
 #        st.metric("Home Runs", hr)
 #
     with col3:
         st.metric("Losses", int(team_row['L'].values[0]), delta = int(last_week_data[1]), help="The delta is for the last 7 days.", delta_color = "inverse")
-#       st.metric("ERA", f"{era:.2f}")
+        st.metric("WAR", team_data_row['WAR'])
 #       st.metric("RBI", rbi)
 #
     with col4:
@@ -417,8 +485,20 @@ def main():
         delta_WLperc = float(team_row['W-L%'].values[0]) - float(old_WLperc)
         #print(old_WLperc, delta_WLperc)
         st.metric("Win %", team_row['W-L%'].values[0], delta = delta_WLperc, help="The delta is for the last 7 days.")
-#        st.metric("OPS", f"{ops:.3f}")
+        st.metric("Batting Ave.", team_data_row["AVG"])
 #        st.metric("Fielding %", f"{fielding_pct:.3f}")
+
+    with col5:
+        st.metric("Games Behind", team_row['GB'].values[0])
+
+    with col6:
+        if team_row['E#'].values[0] == 'E':
+            elim_help="Team is Eliminated from Division Contention"
+        elif team_row['E#'].values[0] == '☠':
+            elim_help="Team is Eliminated from Playoff Contention"
+
+        #print(team_row["E#"].values[0])
+        st.metric("Elim. #", team_row['E#'].values[0], help=elim_help)
 
     style_metric_cards(background_color=main_colors[2],border_color=main_colors[0],border_left_color=main_colors[1],border_size_px=3)
 
