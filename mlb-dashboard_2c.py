@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import seaborn as sns
 from pybaseball import standings, team_batting, team_pitching, batting_stats_bref, pitching_stats_bref, schedule_and_record
 import statsapi
@@ -532,7 +533,7 @@ def main():
 
     style_metric_cards(background_color=main_colors[2],border_color=main_colors[0],border_left_color=main_colors[1],border_size_px=3)
 
-    col1, col2, col3 = st.columns((1,1,1))
+    col1, col2, col3, col4 = st.columns((0.75,0.75,0.5,0.5))
 
     with col1:
         # Win-Loss Record
@@ -578,6 +579,33 @@ def main():
         st.pyplot(fig)
 
     with col2:
+        # Sample data
+        HomeAway_data = {
+            'Location': ['Home', 'Away'],
+            'Wins': [45, 43],
+            'Losses': [36, 38]
+        }
+        # Convert the data to a pandas DataFrame
+        HomeAway_df = pd.DataFrame(HomeAway_data)
+        # Create the stacked bar chart
+        fig4, ax5 = plt.subplots(figsize=(8, 6))
+        # Plot the stacked bars
+        ax5.bar(HomeAway_df['Location'], HomeAway_df['Wins'], label='Wins', color=alt_main_colors[0])
+        ax5.bar(HomeAway_df['Location'], HomeAway_df['Losses'], bottom=HomeAway_df['Wins'], label='Losses', color=alt_main_colors[1])
+        # Customize the plot
+        ax5.set_ylabel('Games')
+        ax5.set_title('Home vs Away Performance')
+        ax5.legend()
+        # Add value labels on the bars
+        for i, location in enumerate(HomeAway_df['Location']):
+            wins = HomeAway_df.loc[i, 'Wins']
+            losses = HomeAway_df.loc[i, 'Losses']
+            ax5.text(i, wins/2, str(wins), ha='center', va='center')
+            ax5.text(i, wins + losses/2, str(losses), ha='center', va='center')
+        # Show the plot in Streamlit
+        st.pyplot(fig4)
+
+    with col3:
         metrics = ['AVG', 'OBP', 'SLG']
         values = [team_data_row['AVG'].values[0], team_data_row['OBP'].values[0], team_data_row['SLG'].values[0]]        
         labels = ['AVG (' + str(team_data_row['AVG'].values[0]) + ')', 'OBP (' + str(team_data_row['OBP'].values[0]) +')', 'SLG ('+str(team_data_row['SLG'].values[0])+')']
@@ -592,7 +620,7 @@ def main():
         plt.show()
         st.pyplot(fig3)
 
-    with col3:
+    with col4:
         # Define the metrics and their values
         metrics = ['ERA', 'FIP', 'WHIP']
         values = [team_data_row['ERA'].values[0], team_data_row['FIP'].values[0], team_data_row['WHIP'].values[0]]        
