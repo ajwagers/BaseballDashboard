@@ -16,6 +16,7 @@ import datetime
 import re
 import math
 from collections import Counter
+import pygal
 
 #pybaseball scrapes data from:  https://www.baseball-reference.com/, https://baseballsavant.mlb.com/, and https://www.fangraphs.com/.
 
@@ -342,11 +343,11 @@ def get_last_week(year,team):
         # Count W's and L's
         wins = recent_games['W/L'].str.startswith('W').sum()
         losses = recent_games['W/L'].str.startswith('L').sum()
-        if math.isnan(recent_games.iloc[[-1]]['Streak']):
+        if math.isnan(recent_games['Streak'].iloc[-1]):
             streak = recent_games.iloc[[-2]]['Streak']
         else:
             streak = recent_games.iloc[[-1]]['Streak'] 
-        print(streak)
+        #print(streak)
         return wins, losses, streak
     except Exception as e:
         print(f"Error fetching schedule from pybaseball: {e}")
@@ -404,6 +405,61 @@ def extract_colors_from_svg(svg_content):
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+def make_spider(values, labels, color, title, max_value=None, division_avg=None, league_avg=None):
+    # Number of variables we're plotting.
+    num_vars = len(labels)
+
+    # Split the circle into even parts and save the angles
+    # so we know where to put each axis.
+    angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+
+    # The plot is a circle, so we need to "complete the loop"
+    # and append the start value to the end.
+    values += values[:1]
+    angles += angles[:1]
+
+    # ax = plt.subplot(polar=True)
+    fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+
+    ax.set_theta_offset(math.pi / 2)
+    ax.set_theta_direction(-1) 
+   
+    plt.xticks(angles[:-1], labels, color='black', size=12)
+    ax.tick_params(axis='x', pad=5.5)
+    
+    ax.set_rlabel_position(0)
+
+    if max_value is None:
+        max_value = max(values + (division_avg or []) + (league_avg or []))
+
+    tick_values = [max_value * i / 5 for i in range(1,6)]
+    plt.yticks(tick_values, [f"{v:.2f}" for v in tick_values], color="black", size=8)
+    plt.ylim(0,max_value)
+ 
+
+    # Draw the outline of our data.
+    ax.plot(angles, values, color=color, linewidth=1, label="Team")
+    # Fill it in.
+    ax.fill(angles, values, color=color, alpha=0.25)
+
+    # Add division average if provided
+    if division_avg:
+        division_avg += division_avg[:1]
+        ax.plot(angles, division_avg, color='blue', linewidth=2, linestyle='--', label='Division Avg')
+
+    # Add league average if provided
+    if league_avg:
+        league_avg += league_avg[:1]
+        ax.plot(angles, league_avg, color='red', linewidth=2, linestyle=':', label='League Avg')
+
+
+    plt.title(title)
+    plt.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
+
+    return(fig)
+
+
 
 # Streamlit app
 def main():
@@ -498,7 +554,7 @@ def main():
         old_WLperc = (oldW)/(oldW+oldL)
         #print(old_WLperc, int(team_row['W'].values[0]), int(last_week_data[0]), int(team_row['L'].values[0]), int(last_week_data[1]))
         delta_WLperc = float(team_row['W-L%'].values[0]) - float(old_WLperc)
-        print(old_WLperc, delta_WLperc)
+        #print(old_WLperc, delta_WLperc)
         st.metric("Win %", team_row['W-L%'].values[0], delta = "{:.3f}".format(delta_WLperc), help="The delta is for the last 7 days.")
 #        st.metric("Fielding %", f"{fielding_pct:.3f}")
 
@@ -533,7 +589,7 @@ def main():
 
     style_metric_cards(background_color=main_colors[2],border_color=main_colors[0],border_left_color=main_colors[1],border_size_px=3)
 
-    col1, col2, col3, col4 = st.columns((0.75,0.75,0.5,0.5))
+    col1, col2, col3, col4 = st.columns((0.5,0.5,0.4,0.4))
 
     with col1:
         # Win-Loss Record
@@ -541,7 +597,17 @@ def main():
         schedule_df = schedule_and_record(year,get_team_abbreviation(selected_team))
         schedule_df = convert_dates(schedule_df)
         # Find the index of the first row where the 'Date' matches today's date
-        today_index = schedule_df[schedule_df['Date'].dt.date == datetime.datetime.now().date()].index[0]
+        today = datetime.datetime.now().date()
+        matching_rows = schedule_df[schedule_df['Date'].dt.date == today]
+        if not matching_rows.empty:
+            today_index = schedule_df[schedule_df['Date'].dt.date == today].index[0]
+        else:
+            while matching_rows.empty:
+                matching_rows_check = schedule_df[schedule_df['Date'].dt.date == today - datetime.timedelta(1)]
+                if not matching_rows_check.empty:
+                    today_index = matching_rows_check.index[0]
+                    matching_rows = matching_rows_check
+
         # Select rows from the first row to the row with today's date
         schedule_df = schedule_df.loc[:today_index]
         # First, let's create columns for wins and losses
@@ -575,7 +641,6 @@ def main():
         # Adjust layout
         plt.tight_layout()
         # Display the plot
-        plt.show()
         st.pyplot(fig)
 
     with col2:
@@ -605,35 +670,36 @@ def main():
         # Show the plot in Streamlit
         st.pyplot(fig4)
 
+    # Get division and league averages
+    #print(team_data.head())
+    #division = team_row['Division'].values[0]
+    #division_data = team_data[team_data.index.isin(standings_data[standings_data['Division'] == division]['Tm'])]
+    league_data = team_data
+
     with col3:
         metrics = ['AVG', 'OBP', 'SLG']
-        values = [team_data_row['AVG'].values[0], team_data_row['OBP'].values[0], team_data_row['SLG'].values[0]]        
+        values = [float(team_data_row['AVG'].values[0]), float(team_data_row['OBP'].values[0]), float(team_data_row['SLG'].values[0])]        
+        #division_avg = [float(division_data[metric].mean()) for metric in metrics]
+        league_avg = [float(league_data[metric].mean()) for metric in metrics]
+        #print(values,league_avg)
         labels = ['AVG (' + str(team_data_row['AVG'].values[0]) + ')', 'OBP (' + str(team_data_row['OBP'].values[0]) +')', 'SLG ('+str(team_data_row['SLG'].values[0])+')']
-        # Create a pie chart
-        fig3, ax4 = plt.subplots()
-        ax4.pie(values, labels=labels, startangle=90, colors = alt_main_colors)
-        # Equal aspect ratio ensures the pie chart is circular.
-        ax4.axis('equal')
-        # Set the title
-        plt.title('Batting Metrics Distribution (AVG, OBP, SLG)')
-        # Show the plot
-        plt.show()
+        fig3 = make_spider(values=values, labels=metrics, title="Batting Metrics", 
+                           color=alt_main_colors[0], 
+                           league_avg=league_avg)  #division_avg=division_avg, 
         st.pyplot(fig3)
 
     with col4:
         # Define the metrics and their values
         metrics = ['ERA', 'FIP', 'WHIP']
-        values = [team_data_row['ERA'].values[0], team_data_row['FIP'].values[0], team_data_row['WHIP'].values[0]]        
+        values = [float(team_data_row['ERA'].values[0]), float(team_data_row['FIP'].values[0]), float(team_data_row['WHIP'].values[0])]        
         labels = ['ERA (' + str(team_data_row['ERA'].values[0]) + ')', 'FIP (' + str(team_data_row['FIP'].values[0]) +')', 'WHIP ('+str(team_data_row['WHIP'].values[0])+')']
-        # Create a pie chart
-        fig2, ax3 = plt.subplots()
-        ax3.pie(values, labels=labels, startangle=90, colors = alt_main_colors)
-        # Equal aspect ratio ensures the pie chart is circular.
-        ax3.axis('equal')
-        # Set the title
-        plt.title('Pitching Metrics Distribution (ERA, FIP, WHIP)')
-        # Show the plot
-        plt.show()
+        #division_avg = [float(division_data[metric].mean()) for metric in metrics]
+        league_avg = [float(league_data[metric].mean()) for metric in metrics]
+        #print(values,league_avg)
+
+        fig2 = make_spider(values=values, labels=metrics, title="Pitching Metrics", 
+                           color=alt_main_colors[1], 
+                           league_avg=league_avg)  #division_avg=division_avg, 
         st.pyplot(fig2)
 
     # Team Batting
